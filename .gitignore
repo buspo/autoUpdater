@@ -1,0 +1,3 @@
+.venv
+autoUpdateCompose.service
+autoUpdateCompose.timer
