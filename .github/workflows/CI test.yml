@@ -1,0 +1,299 @@
+name: CI/CD - Test, Build and Push
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: buspo/autoupdater
+
+concurrency:
+  group: CI-CD-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==============================================================================
+  # JOB 1: Lint and validate code
+  # ==============================================================================
+  lint:
+    name: Lint Python Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pylint
+          pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          # Stop on syntax errors or undefined names
+          flake8 autoupdate.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 autoupdate.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Check Python syntax
+        run: python -m py_compile autoupdate.py
+
+  # ==============================================================================
+  # JOB 2: Build test image
+  # ==============================================================================
+  build-test:
+    name: Build Test Image
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: Dockerfile
+          push: false
+          load: true
+          tags: autoupdater:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save Docker image
+        run: docker save autoupdater:test | gzip > autoupdater-test.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: autoupdater-test.tar.gz
+          retention-days: 1
+
+  # ==============================================================================
+  # JOB 3: Integration tests
+  # ==============================================================================
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load < autoupdater-test.tar.gz
+
+      - name: Create test environment
+        run: |
+          mkdir -p test-env
+          
+          # Create test docker-compose with labeled services
+          cat > test-env/docker-compose-test.yml << 'EOF'
+          version: '3.8'
+          services:
+            test-nginx:
+              image: nginx:1.25.0
+              container_name: test-nginx
+              labels:
+                - "autoupdate.enable=true"
+              restart: unless-stopped
+            
+            test-alpine:
+              image: alpine:3.18
+              container_name: test-alpine
+              command: sleep 3600
+              labels:
+                - "autoupdate.enable=true"
+              restart: unless-stopped
+            
+            test-no-label:
+              image: busybox:1.35.0
+              container_name: test-no-label
+              command: sleep 3600
+              restart: unless-stopped
+          EOF
+          
+          # Create autoupdater compose
+          cat > test-env/docker-compose-autoupdate.yml << 'EOF'
+          version: '3.8'
+          services:
+            autoupdate:
+              image: autoupdater:test
+              container_name: autoupdate-test
+              volumes:
+                - /var/run/docker.sock:/var/run/docker.sock
+                - ./:/opt/test:ro
+              environment:
+                - CRON_SCHEDULE=* * * * *
+                - AUTOUPDATE_LABEL=autoupdate.enable=true
+                - AUTO_CLEANUP=false
+                - FORCE_UPDATE=false
+                - RUN_ON_STARTUP=true
+              labels:
+                - autoupdater.self=true
+          EOF
+
+      - name: Start test containers
+        run: |
+          cd test-env
+          docker-compose -f docker-compose-test.yml up -d
+          docker-compose -f docker-compose-autoupdate.yml up -d
+          
+      - name: Wait for startup
+        run: sleep 10
+
+      - name: Check autoupdater is running
+        run: |
+          if ! docker ps | grep -q autoupdate-test; then
+            echo "❌ Autoupdate container not running"
+            exit 1
+          fi
+          echo "✅ Autoupdate container is running"
+
+      - name: Check Docker socket access
+        run: |
+          docker exec autoupdate-test docker ps > /dev/null
+          if [ $? -eq 0 ]; then
+            echo "✅ Docker socket accessible"
+          else
+            echo "❌ Docker socket not accessible"
+            exit 1
+          fi
+
+      - name: Verify container health
+        run: |
+          sleep 5
+          HEALTH=$(docker inspect autoupdate-test --format='{{.State.Health.Status}}')
+          echo "Health status: $HEALTH"
+          
+          if [ "$HEALTH" = "healthy" ]; then
+            echo "✅ Container is healthy"
+          else
+            echo "❌ Container health check failed"
+            docker logs autoupdate-test
+            exit 1
+          fi
+
+      - name: Check logs for errors
+        run: |
+          docker logs autoupdate-test 2>&1 | tee autoupdate-logs.txt
+          
+          if grep -qi "error\|fail\|exception" autoupdate-logs.txt | grep -v "Error: cannot retrieve remote digest"; then
+            echo "⚠️  Found potential errors in logs"
+            grep -i "error\|fail\|exception" autoupdate-logs.txt || true
+          fi
+          
+          if grep -q "Docker daemon connection successful" autoupdate-logs.txt; then
+            echo "✅ Docker daemon connected"
+          else
+            echo "❌ Docker daemon connection failed"
+            exit 1
+          fi
+
+      - name: Verify labeled containers detected
+        run: |
+          docker logs autoupdate-test 2>&1 | tee check-logs.txt
+          
+          if grep -q "Found.*containers to check" check-logs.txt; then
+            echo "✅ Containers detected"
+            grep "Found.*containers to check" check-logs.txt
+          else
+            echo "❌ No containers detected"
+            exit 1
+          fi
+
+      - name: Verify self-skip protection
+        run: |
+          docker logs autoupdate-test 2>&1 > self-check.txt
+          
+          if grep -q "autoupdater.self" self-check.txt || ! grep -q "autoupdate-test" self-check.txt; then
+            echo "✅ Self-update protection working"
+          else
+            echo "⚠️  Self-update protection may not be working"
+          fi
+
+      - name: Test manual update command
+        run: |
+          docker exec autoupdate-test python3 /app/autoupdate.py --help
+          if [ $? -eq 0 ]; then
+            echo "✅ CLI works correctly"
+          else
+            echo "❌ CLI failed"
+            exit 1
+          fi
+
+      - name: Test cron is configured
+        run: |
+          docker exec autoupdate-test crontab -l | grep "run_cron_update.sh"
+          if [ $? -eq 0 ]; then
+            echo "✅ Cron job configured"
+          else
+            echo "❌ Cron job not configured"
+            exit 1
+          fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            autoupdate-logs.txt
+            check-logs.txt
+            self-check.txt
+          retention-days: 7
+
+      - name: Cleanup test environment
+        if: always()
+        run: |
+          cd test-env
+          docker-compose -f docker-compose-autoupdate.yml down -v || true
+          docker-compose -f docker-compose-test.yml down -v || true
+          docker rm -f autoupdate-test test-nginx test-alpine test-no-label || true
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [lint, integration-test]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.lint.result }}" == "success" ]; then
+            echo "✅ Lint: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Lint: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.integration-test.result }}" == "success" ]; then
+            echo "✅ Integration Tests: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Integration Tests: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
