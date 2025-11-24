@@ -139,6 +139,11 @@ def process_container(container, client, force_update=False):
         tuple: (success: bool, old_image_id: str|None)
     """
     labels = container.labels or {}
+
+    # Skip self-updater container
+    if labels.get("autoupdater.self") == "true":
+        print(f"Skip {container.name}: this container is the auto-updater itself\n")
+        return False, None
     
     # Check if container was created by Docker Compose
     compose_label_keys = ("com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.version")
@@ -242,7 +247,7 @@ def update_containers(label="autoupdate.enable=true", container_name=None, force
     # Single-container mode
     if container_name:
         print(f"Single-container update mode: {container_name}")
-        print(f"Force mode: {'Yes' if force else 'No'}\n")
+        print(f"Force mode: {'Yes' if force else 'No'} (self containers will be skipped automatically)\n")
         
         try:
             container = client.containers.get(container_name)
@@ -269,7 +274,7 @@ def update_containers(label="autoupdate.enable=true", container_name=None, force
     containers = client.containers.list(all=True, filters=filters)
 
     print(f"Found {len(containers)} containers to check")
-    print(f"Force mode: {'Yes' if force else 'No'}\n")
+    print(f"Force mode: {'Yes' if force else 'No'} (self containers will be skipped automatically)\n")
 
     # Process each container
     for container in containers:
@@ -300,16 +305,21 @@ if __name__ == "__main__":
                        help='Force update bypassing label check (use with --update or alone for all containers)')
     parser.add_argument('--cleanup', action='store_true', 
                        help='Cleanup old images after update (specific image with --update, all dangling otherwise)')
-    
+    parser.add_argument('--yes', '-y', action='store_true',
+                        help='Automatic yes to prompts (non-interactive mode)')
+
     args = parser.parse_args()
 
     # Argument validation
     if args.force and not args.update:
-        print("Warning: --force without --update will update ALL Docker Compose containers regardless of label. Continue? (y/N): ", end='')
-        confirm = input().strip().lower()
-        if confirm != 'y':
-            print("Operation cancelled")
-            exit(0)
+        if not args.yes:
+            print("Warning: --force without --update will update ALL Docker Compose containers regardless of label. Continue? (y/N): ", end='')
+            confirm = input().strip().lower()
+            if confirm != 'y':
+                print("Operation cancelled")
+                exit(0)
+        else:
+             print("Force mode enabled with automatic confirmation")
 
     # Run updates
     updated = update_containers(label=args.label, container_name=args.update, force=args.force)

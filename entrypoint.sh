@@ -25,17 +25,17 @@ echo ""
 
 # Build the update command based on environment variables
 build_update_command() {
-    local cmd="python3 /app/autoupdate.py --label \"${AUTOUPDATE_LABEL}\""
+    local CMD="python3 /app/autoupdate.py --label \"${AUTOUPDATE_LABEL}\""
     
     if [ "${AUTO_CLEANUP}" = "true" ]; then
-        cmd="$cmd --cleanup"
+        CMD="$CMD --cleanup"
     fi
     
     if [ "${FORCE_UPDATE}" = "true" ]; then
-        cmd="$cmd --force"
+        CMD="$CMD --force --yes"
     fi
     
-    echo "$cmd"
+    echo "$CMD"
 }
 
 # Run update function
@@ -45,10 +45,10 @@ run_update() {
     echo "[$timestamp] Starting update check..." | tee -a /var/log/autoupdate/autoupdate.log
     echo "[$timestamp] ========================================" | tee -a /var/log/autoupdate/autoupdate.log
     
-    local cmd=$(build_update_command)
+    local CMD=$(build_update_command)
     
     # Execute update and log to file
-    eval "$cmd" 2>&1 | tee -a /var/log/autoupdate/autoupdate.log
+    eval "$CMD" 2>&1 | tee -a /var/log/autoupdate/autoupdate.log
     
     # Get exit code of the python command (not tee)
     local exit_code=${PIPESTATUS[0]}
@@ -87,7 +87,7 @@ if [ "${AUTO_CLEANUP}" = "true" ]; then
 fi
 
 if [ "${FORCE_UPDATE}" = "true" ]; then
-    CMD="$CMD --force"
+    CMD="$CMD --force --yes"
 fi
 
 # Log with timestamp

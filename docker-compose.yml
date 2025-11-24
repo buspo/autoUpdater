@@ -1,0 +1,58 @@
+services:
+  autoupdate:
+    build: .
+    image: autoupdate:latest
+    container_name: autoupdate
+    restart: unless-stopped
+    
+    volumes:
+      # Docker socket (REQUIRED)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Docker login (for private registries)
+      - $HOME/.docker/config.json:/root/.docker/config.json:ro
+      
+      # Mount directories containing docker-compose.yml files
+      # Example paths - CHANGE THESE to match your setup:
+      - /opt/docker:/opt/docker:ro  
+      # - /home/user/projects:/projects:ro
+      # - /srv/apps:/apps:ro
+      
+      # Add all your Docker Compose project directories here
+    
+    # =============================================
+    # ENVIRONMENT - Configure behavior
+    # =============================================
+    environment:
+      # Cron schedule (when to run updates)
+      # Default: 0 3 * * * (daily at 3 AM)
+      - CRON_SCHEDULE=0 3 * * *
+      
+      # Label to filter containers
+      # Default: autoupdate.enable=true
+      - AUTOUPDATE_LABEL=autoupdate.enable=true
+      
+      # Auto cleanup old images after update
+      # Default: false
+      # Set to "true" to automatically remove old images
+      #- AUTO_CLEANUP=true
+      
+      # Force update all containers (bypass label check)
+      # Default: false
+      # WARNING: Use with caution!
+      #- FORCE_UPDATE=true
+      
+      # Run update immediately on container startup
+      # Default: false
+      # Useful for testing
+      #- RUN_ON_STARTUP=true
+      
+      # Timezon
+      # Default: Europe/Rome
+      #- TZ=Europe/Rome
+    
+    # Labels
+    labels:
+      - app=docker-autoupdate
+      # Label to identify self container and skip updates
+      - autoupdater.self=true
+      - autoupdate.enable=false

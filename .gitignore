@@ -1,5 +1,4 @@
 .venv
 autoUpdateCompose.service
 autoUpdateCompose.timer
-docker-compose.yml
 main.py
