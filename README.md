@@ -1,9 +1,9 @@
 <div align="center">
   <img src="./img/logo.png" width="450" />
-  
+
 ---
 
-A lightweight Python utility that automatically detects and updates Docker Compose services when new image versions are available in the registry. Now available as a containerized service with cron scheduling!
+A lightweight Python utility that automatically detects and updates Docker Compose services when new image versions are available in the registry!
 </div>
 
 ## 🚀 Features

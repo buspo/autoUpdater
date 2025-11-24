@@ -64,6 +64,7 @@ run_update() {
 
 # Create log file if it doesn't exist
 touch /var/log/autoupdate/autoupdate.log
+touch /var/log/autoupdate/cron_autoupdate.log
 
 # Run immediately on startup if enabled
 if [ "${RUN_ON_STARTUP}" = "true" ]; then
@@ -91,59 +92,57 @@ fi
 
 # Log with timestamp
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-echo "[$TIMESTAMP] ========================================" >> /var/log/autoupdate/autoupdate.log
-echo "[$TIMESTAMP] Cron triggered update check..." >> /var/log/autoupdate/autoupdate.log
-echo "[$TIMESTAMP] ========================================" >> /var/log/autoupdate/autoupdate.log
+echo "[$TIMESTAMP] ========================================" 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
+echo "[$TIMESTAMP] Cron triggered update check..." 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
+echo "[$TIMESTAMP] ========================================" 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
 
 # Execute
-eval "$CMD" >> /var/log/autoupdate/autoupdate.log 2>&1
+eval "$CMD" 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
 
 # Log completion
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "[$TIMESTAMP] ✅ Cron update check completed" >> /var/log/autoupdate/autoupdate.log
+    echo "[$TIMESTAMP] ✅ Cron update check completed" 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
 else
-    echo "[$TIMESTAMP] ⚠️  Cron update check failed with code $EXIT_CODE" >> /var/log/autoupdate/autoupdate.log
+    echo "[$TIMESTAMP] ⚠️  Cron update check failed with code $EXIT_CODE" 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
 fi
-echo "" >> /var/log/autoupdate/autoupdate.log
+echo "" 2>&1 >> /var/log/autoupdate/cron_autoupdate.log
 CRONSCRIPT
 
 chmod +x /app/run_cron_update.sh
 
-# Create cron job file
-# IMPORTANT: Cron syntax is different - no "root" user needed in container
-# Redirect ONLY errors to see if cron itself fails
-cat > /etc/cron.d/autoupdate << EOF
-# Docker Auto-Updater Cron Job
+# Setup cron job using crontab directly (simpler approach)
+# Create crontab entry
+(crontab -l 2>/dev/null || true; cat << CRONTAB
+# Docker Auto-Updater
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 AUTOUPDATE_LABEL=${AUTOUPDATE_LABEL}
 AUTO_CLEANUP=${AUTO_CLEANUP}
 FORCE_UPDATE=${FORCE_UPDATE}
-
-# Schedule: ${CRON_SCHEDULE}
-# Output goes to autoupdate.log, errors printed to stderr
-${CRON_SCHEDULE} /app/run_cron_update.sh 2>&1
-EOF
-
-# Set correct permissions (cron requires specific permissions)
-chmod 0644 /etc/cron.d/autoupdate
-
-# Register the cron job
-crontab /etc/cron.d/autoupdate
+${CRON_SCHEDULE} /app/run_cron_update.sh
+CRONTAB
+) | crontab -
 
 echo "✅ Cron configured: ${CRON_SCHEDULE}"
+echo ""
+
+# Verify cron is loaded
+if crontab -l | grep -q "run_cron_update.sh"; then
+    echo "✅ Cron job verified"
+else
+    echo "⚠️  Warning: Cron job may not be loaded correctly"
+fi
 echo ""
 
 # Start cron daemon
 cron
 echo "✅ Cron daemon started"
 echo ""
-echo "Logs saved to: /var/log/autoupdate/autoupdate.log"
-echo "Container running in background. Use 'docker logs -f' to follow updates."
+echo "Following logs from: /var/log/autoupdate/cron_autoupdate.log"
 echo ""
 
 # Keep container running by sleeping forever
 # Cron runs in background, logs are written to file
-exec tail -f /dev/null
+exec tail -f /var/log/autoupdate/cron_autoupdate.log

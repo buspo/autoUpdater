@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 LABEL maintainer="https://github.com/buspo"
 LABEL description="Docker Auto-Updater with cron scheduling"
-LABEL version="1.0.0"
+LABEL version="0.1.0"
 
 RUN apt-get update && apt-get install -y \
     docker.io \
@@ -23,7 +23,7 @@ COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
 
 
-ENV CRON_SCHEDULE="0 2 * * *" \
+ENV CRON_SCHEDULE="0 3 * * *" \
     AUTOUPDATE_LABEL="autoupdate.enable=true" \
     AUTO_CLEANUP="false" \
     FORCE_UPDATE="false" \
