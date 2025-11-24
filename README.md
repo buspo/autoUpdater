@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./img/logo.png" width="450" />
-
-# AutoUpdater for Docker Compose
+  
+---
 
 A lightweight Python utility that automatically detects and updates Docker Compose services when new image versions are available in the registry. Now available as a containerized service with cron scheduling!
 </div>
@@ -21,13 +21,13 @@ A lightweight Python utility that automatically detects and updates Docker Compo
 - [Installation](#installation)
   - [Option 1: Standalone Script](#option-1-standalone-script)
   - [Option 2: Docker Container (Recommended)](#option-2-docker-container-recommended)
-- [Usage](#usage)
+- [Usage](#-usage)
   - [Standalone Mode](#standalone-mode)
   - [Container Mode](#container-mode)
-- [Configuration](#configuration)
-- [Docker Compose Setup Example](#docker-compose-setup-example)
-- [How It Works](#how-it-works)
-- [Security Notes](#security-notes)
+- [Configuration](#-configuration)
+- [Docker Compose Setup Example](#-docker-compose-setup-example)
+- [How It Works](#-how-it-works)
+- [Security Notes](#-security-notes)
 
 ---
 
