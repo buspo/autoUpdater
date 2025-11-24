@@ -194,8 +194,6 @@ environment:
 Label your services to enable auto-updates:
 
 ```yaml
-version: '3.8'
-
 services:
   # Web application - will be auto-updated
   web:
