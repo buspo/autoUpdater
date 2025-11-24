@@ -49,7 +49,9 @@ ENV CRON_SCHEDULE="0 3 * * *" \
 RUN mkdir -p /var/log/autoupdate
 
 
-HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
-    CMD python3 -c "import docker; docker.from_env().ping()" || exit 1
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD test -f /var/log/autoupdate/autoupdate.log && \
+        pgrep cron > /dev/null && \
+        python3 -c "import docker; docker.from_env().ping()" || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]

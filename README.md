@@ -6,6 +6,14 @@
 A lightweight Python utility that automatically detects and updates Docker Compose services when new image versions are available in the registry!
 </div>
 
+## ⚠️ SECURITY WARNING
+
+> [!WARNING]
+> **Docker socket = root access to your entire Docker environment**
+> 
+> This tool can control ALL containers. A compromise means full system access.
+> Review [Security Considerations](#️-security-considerations) before installing.
+
 ## 🚀 Features
 
 - **Automatic digest comparison**: Detects outdated images by comparing local vs. remote SHA256 digests
@@ -18,18 +26,44 @@ A lightweight Python utility that automatically detects and updates Docker Compo
 
 ## 📋 Table of Contents
 
+- [Security Considerations](#-security-considerations)
 - [Installation](#installation)
   - [Option 1: Standalone Script](#option-1-standalone-script)
   - [Option 2: Docker Container (Recommended)](#option-2-docker-container-recommended)
 - [Usage](#-usage)
   - [Standalone Mode](#standalone-mode)
   - [Container Mode](#container-mode)
-- [Configuration](#-configuration)
+- [Configuration](#%EF%B8%8F-configuration)
 - [Docker Compose Setup Example](#-docker-compose-setup-example)
 - [How It Works](#-how-it-works)
-- [Security Notes](#-security-notes)
 
 ---
+
+## ⚠️ Security Considerations
+
+**IMPORTANT: Read this before installing!**
+
+### What It Needs
+- The service needs access to the Docker socket (`/var/run/docker.sock`)
+- **Container mode**: Runs as root inside container (isolated from host)
+- **Standalone mode**: User must be in the `docker` group (non-root)
+
+### Security Implications
+
+- The autoupdate container has full control over Docker daemon
+- Use registry credentials via Docker config for private registries
+- Recommend mounting compose directories as read-only (`:ro`)
+- Always test in development before production use
+
+### Security Best Practices
+
+1. **Don't auto-update critical services**: Exclude databases and stateful services from auto-updates
+2. **Use specific tags**: Prefer `nginx:1` over `nginx:latest` for more control
+3. **Monitor logs**: Regularly check update logs for issues
+4. **Test first**: Use `RUN_ON_STARTUP=true` to test immediately
+5. **Backup**: Always backup before enabling auto-updates on production
+
+
 
 ## 📥 Installation
 
@@ -233,10 +267,9 @@ services:
       - AUTO_CLEANUP=true
     restart: unless-stopped
     labels:
-      - autoupdate.enable=false  # Don't update itself!
-
-volumes:
-  db-data:
+      # Label to identify self container and skip updates
+      - autoupdater.self=true
+      - autoupdate.enable=false
 ```
 
 Then start your stack:
@@ -275,25 +308,5 @@ The autoupdate service will:
 - **Running containers**: Pulled, rebuilt, and restarted
 - **Stopped containers**: Image updated but container remains stopped
 - **Labels respected**: Only updates containers with the configured label (unless --force)
-
----
-
-## 🔐 Security Notes
-
-- The service needs access to the Docker socket (`/var/run/docker.sock`)
-- **Container mode**: Runs as root inside container (isolated from host)
-- **Standalone mode**: User must be in the `docker` group (non-root)
-- The autoupdate container has full control over Docker daemon
-- Use registry credentials via Docker config for private registries
-- Recommend mounting compose directories as read-only (`:ro`)
-- Always test in development before production use
-
-### Security Best Practices
-
-1. **Don't auto-update critical services**: Exclude databases and stateful services from auto-updates
-2. **Use specific tags**: Prefer `nginx:1` over `nginx:latest` for more control
-3. **Monitor logs**: Regularly check update logs for issues
-4. **Test first**: Use `RUN_ON_STARTUP=true` to test immediately
-5. **Backup**: Always backup before enabling auto-updates on production
 
 ---
