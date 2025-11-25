@@ -95,10 +95,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Docker image
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
+      - name: Load Docker image
+        run: |
+          echo "Loading Docker image from artifact..."
+          if [ ! -f autoupdater-test.tar.gz ]; then
+            echo "❌ Artifact file not found"
+            ls -la
+            exit 1
+          fi
+          
+          docker load < autoupdater-test.tar.gz
+          
+          echo "Verifying image is available..."
+          docker images
+          
+          if ! docker images | grep -q "autoupdater.*test"; then
+            echo "❌ Image 'autoupdater:test' not found after loading"
+            docker images
+            exit 1
+          fi
+          
+          echo "✅ Image loaded successfully"
 
       - name: Install docker compose
         run: |
