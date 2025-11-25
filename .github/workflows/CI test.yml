@@ -1,5 +1,4 @@
-name: CI/CD - Test, Build and Push
-
+name: CI Test
 on:
   workflow_dispatch:
   push:
@@ -14,7 +13,7 @@ env:
   IMAGE_NAME: buspo/autoupdater
 
 concurrency:
-  group: CI-CD-${{ github.ref }}
+  group: CI ${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -108,8 +107,7 @@ jobs:
           mkdir -p test-env
           
           # Create test docker-compose with labeled services
-          cat > test-env/docker-compose-test.yml << 'EOF'
-          version: '3.8'
+          tee test-env/docker-compose-test.yml << 'EOF'
           services:
             test-nginx:
               image: nginx:1.25.0
@@ -134,8 +132,7 @@ jobs:
           EOF
           
           # Create autoupdater compose
-          cat > test-env/docker-compose-autoupdate.yml << 'EOF'
-          version: '3.8'
+          tee test-env/docker-compose-autoupdate.yml << 'EOF'
           services:
             autoupdate:
               image: autoupdater:test
