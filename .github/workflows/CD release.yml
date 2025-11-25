@@ -45,8 +45,8 @@ jobs:
             
             const ciRun = runs[0];
             console.log(`CI Status: ${ciRun.conclusion}`);
-            #console.log("CI Run completo:");
-            #console.log(JSON.stringify(ciRun, null, 2));
+            //console.log("CI Run completo:");
+            //console.log(JSON.stringify(ciRun, null, 2));
             
             if (ciRun.conclusion !== 'success') {
               core.setFailed(`CI did not pass. Status: ${ciRun.conclusion}`);
