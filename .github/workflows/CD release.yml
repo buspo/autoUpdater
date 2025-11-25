@@ -27,6 +27,7 @@ jobs:
         id: check
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { data } = await github.rest.actions.listWorkflowRunsForRepo({
               owner: context.repo.owner,
@@ -44,6 +45,8 @@ jobs:
             
             const ciRun = runs[0];
             console.log(`CI Status: ${ciRun.conclusion}`);
+            #console.log("CI Run completo:");
+            #console.log(JSON.stringify(ciRun, null, 2));
             
             if (ciRun.conclusion !== 'success') {
               core.setFailed(`CI did not pass. Status: ${ciRun.conclusion}`);
