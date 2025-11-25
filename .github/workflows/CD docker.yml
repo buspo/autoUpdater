@@ -6,9 +6,6 @@
     #  workflows: ["CI Test"]
     #  types:
     #    - completed
-    #push:
-    #  branches:
-    #    - main
 
   env:
     REGISTRY: ghcr.io

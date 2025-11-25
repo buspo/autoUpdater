@@ -1,13 +1,13 @@
-name: CI Test
+name: CI - Test & Validate
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - Test-CI
   pull_request:
     branches:
       - main
+      - Test-CI
 
 env:
   REGISTRY: ghcr.io
