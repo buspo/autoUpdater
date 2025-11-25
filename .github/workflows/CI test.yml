@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - Test-CI
   pull_request:
     branches:
       - main
@@ -99,8 +100,10 @@ jobs:
         with:
           name: docker-image
 
-      - name: Load Docker image
-        run: docker load < autoupdater-test.tar.gz
+      - name: Install docker compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
 
       - name: Create test environment
         run: |
