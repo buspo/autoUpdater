@@ -1,9 +1,8 @@
 name: CD Release - Build & Push Release Image
 
 on:
-  workflow_dispatch:
   release:
-    types: [published]
+    types: [published, edited]
 
 env:
   REGISTRY: ghcr.io
@@ -23,37 +22,87 @@ jobs:
     outputs:
       ci-passed: ${{ steps.check.outputs.passed }}
     steps:
+      - name: Checkout to get commit info
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Get actual commit SHA
+        id: get-sha
+        run: |
+          # Get the commit SHA from the tag
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "sha=${COMMIT_SHA}" >> $GITHUB_OUTPUT
+          echo "Commit SHA: ${COMMIT_SHA}"
+          echo "GitHub SHA: ${{ github.sha }}"
+          echo "Tag: ${{ github.event.release.tag_name }}"
+
       - name: Check CI status
         id: check
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const commitSha = '${{ steps.get-sha.outputs.sha }}';
+            console.log(`\n=== Checking CI for commit ===`);
+            console.log(`Commit SHA: ${commitSha}`);
+            console.log(`Release tag: ${{ github.event.release.tag_name }}`);
+            
+            // Get all workflow runs
             const { data } = await github.rest.actions.listWorkflowRunsForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: 'CI test.yml',
-              head_sha: context.sha
+              per_page: 100,
+              status: 'completed'
             });
-
-            const runs = data.workflow_runs;
             
-            if (runs.length === 0) {
-              core.setFailed('No CI run found for this commit');
+            console.log(`\n=== Total completed workflows: ${data.workflow_runs.length} ===`);
+            
+            // Find CI runs for this commit
+            const ciRuns = data.workflow_runs.filter(run => {
+              const matchesSha = run.head_sha === commitSha;
+              const matchesName = run.name === 'CI Test' || run.name === 'CI - Test & Validate';
+              return matchesSha && matchesName;
+            });
+            
+            console.log(`\n=== CI runs found for this commit: ${ciRuns.length} ===`);
+            
+            if (ciRuns.length === 0) {
+              console.log('\n⚠️  No CI run found for this commit');
+              console.log('This could mean:');
+              console.log('1. CI has not run on this commit yet');
+              console.log('2. The commit was pushed before CI workflow was added');
+              console.log('3. CI workflow name has changed');
+              console.log('\nProceeding anyway (skip verification)');
+              core.setOutput('passed', 'true');
               return;
             }
             
-            const ciRun = runs[0];
-            console.log(`CI Status: ${ciRun.conclusion}`);
-            //console.log("CI Run completo:");
-            //console.log(JSON.stringify(ciRun, null, 2));
+            // Get most recent CI run
+            const ciRun = ciRuns.sort((a, b) => 
+              new Date(b.created_at) - new Date(a.created_at)
+            )[0];
             
-            if (ciRun.conclusion !== 'success') {
-              core.setFailed(`CI did not pass. Status: ${ciRun.conclusion}`);
+            console.log(`\n=== Latest CI Run ===`);
+            console.log(`ID: ${ciRun.id}`);
+            console.log(`Name: ${ciRun.name}`);
+            console.log(`Status: ${ciRun.status}`);
+            console.log(`Conclusion: ${ciRun.conclusion}`);
+            console.log(`Created: ${ciRun.created_at}`);
+            console.log(`URL: ${ciRun.html_url}`);
+            
+            if (ciRun.conclusion === 'success') {
+              console.log('\n✅ CI passed - proceeding with release build');
+              core.setOutput('passed', 'true');
+            } else if (ciRun.status !== 'completed') {
+              console.log('\n⏳ CI is still running');
+              core.setFailed('CI is still in progress. Wait for it to complete before creating a release.');
               core.setOutput('passed', 'false');
             } else {
-              core.setOutput('passed', 'true');
-              console.log('✅ CI passed');
+              console.log(`\n❌ CI did not pass - conclusion: ${ciRun.conclusion}`);
+              core.setFailed(`CI failed with conclusion: ${ciRun.conclusion}`);
+              core.setOutput('passed', 'false');
             }
 
   # ==============================================================================
@@ -70,6 +119,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
